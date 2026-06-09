@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sine Line Image Converter</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="変換結果">
+        <canvas id="outputCanvas" width="900" height="1100"></canvas>
+        <canvas id="sourceCanvas" hidden></canvas>
+      </section>
+
+      <aside class="control-panel" aria-label="設定">
+        <div class="panel-heading">
+          <p class="eyebrow">Sine Line Converter</p>
+        </div>
+
+        <label class="upload-box">
+          <input id="imageInput" type="file" accept="image/*">
+          <span>写真をアップロード</span>
+        </label>
+
+        <div class="color-grid">
+          <label class="field">
+            <span>線の色</span>
+            <input id="lineColor" type="color" value="#ff6848">
+          </label>
+          <label class="field">
+            <span>背景色</span>
+            <input id="backgroundColor" type="color" value="#fffdf8">
+          </label>
+        </div>
+
+        <label class="field">
+          <span>線の間隔 <output id="spacingValue">9</output>px</span>
+          <input id="lineSpacing" type="range" min="2" max="20" step="1" value="9">
+        </label>
+
+        <label class="field">
+          <span>線の太さ <output id="widthValue">1.2</output>px</span>
+          <input id="lineWidth" type="range" min="0.2" max="8" step="0.1" value="1.2">
+        </label>
+
+        <label class="field">
+          <span>最小振幅 <output id="minAmplitudeValue">0.4</output>px</span>
+          <input id="minAmplitude" type="range" min="0" max="10" step="0.1" value="0.4">
+        </label>
+
+        <label class="field">
+          <span>最大振幅 <output id="maxAmplitudeValue">14</output>px</span>
+          <input id="maxAmplitude" type="range" min="1" max="42" step="0.5" value="14">
+        </label>
+
+        <label class="field">
+          <span>最小周波数 <output id="minFrequencyValue">0.018</output></span>
+          <input id="minFrequency" type="range" min="0.001" max="0.1" step="0.001" value="0.018">
+        </label>
+
+        <label class="field">
+          <span>最大周波数 <output id="maxFrequencyValue">0.18</output></span>
+          <input id="maxFrequency" type="range" min="0.1" max="1" step="0.005" value="0.18">
+        </label>
+
+        <label class="field">
+          <span>暗部の濃さ <output id="darkAlphaValue">0.95</output></span>
+          <input id="darkAlpha" type="range" min="0.1" max="1" step="0.01" value="0.95">
+        </label>
+
+        <label class="field">
+          <span>ガンマ補正 <output id="gammaValue">1.35</output></span>
+          <input id="gamma" type="range" min="0.4" max="3" step="0.05" value="1.35">
+        </label>
+
+        <label class="field">
+          <span>手描きノイズ <output id="handNoiseValue">0.45</output>px</span>
+          <input id="handNoise" type="range" min="0" max="10" step="0.05" value="0.45">
+        </label>
+
+        <div class="button-row">
+          <button id="seedButton" type="button">ランダムシード変更</button>
+          <button id="downloadButton" type="button">PNG保存</button>
+        </div>
+      </aside>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
