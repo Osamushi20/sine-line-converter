@@ -32,9 +32,9 @@ body {
 }
 
 .workspace {
-  display: grid;
+  display: flex;
   align-items: center;
-  justify-items: center;
+  justify-content: center;
   overflow: hidden;
   padding: 28px;
   border: 1px solid var(--line);
@@ -44,8 +44,11 @@ body {
 
 #outputCanvas {
   display: block;
+  width: auto;
   max-width: 100%;
+  max-height: calc(100vh - 48px);
   height: auto;
+  object-fit: contain;
   background: #ffffff;
   box-shadow: none;
 }
@@ -192,12 +195,13 @@ input:focus-visible {
 
   .workspace {
     padding: 12px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   #outputCanvas {
     width: 100%;
     max-width: 100%;
+    max-height: none;
     height: auto;
   }
 
