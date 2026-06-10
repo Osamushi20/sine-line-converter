@@ -46,6 +46,9 @@ const rangeTracks = {
 };
 
 const HAND_NOISE_AMOUNT = 0.45;
+const PNG_EXPORT_DPI = 600;
+const CSS_DPI = 96;
+const MAX_EXPORT_SIDE = 6000;
 
 let seed = Math.floor(Math.random() * 100000);
 let grayscale = null;
@@ -229,53 +232,63 @@ function getSettings() {
 
 function renderSineLines() {
   workspace.classList.add("has-image");
+  renderArtwork(outputCtx, outputCanvas.width, outputCanvas.height, 1, true);
+}
+
+function renderArtwork(targetCtx, logicalWidth, logicalHeight, scale, collectSvg) {
   const settings = getSettings();
-  const width = outputCanvas.width;
-  const height = outputCanvas.height;
+  const width = Math.round(logicalWidth * scale);
+  const height = Math.round(logicalHeight * scale);
   const sampleStep = 3;
   const lineCanvas = document.createElement("canvas");
   const lineCtx = lineCanvas.getContext("2d");
-  const maskCanvas = buildMaskCanvas(width, height, settings);
+  const maskCanvas = buildMaskCanvas(width, height, settings, scale);
 
-  outputCtx.fillStyle = settings.backgroundColor;
-  outputCtx.fillRect(0, 0, width, height);
+  targetCtx.fillStyle = settings.backgroundColor;
+  targetCtx.fillRect(0, 0, width, height);
   lineCanvas.width = width;
   lineCanvas.height = height;
-  lineCtx.lineWidth = settings.lineWidth;
+  lineCtx.lineWidth = settings.lineWidth * scale;
   lineCtx.lineCap = "round";
   lineCtx.lineJoin = "round";
   lineCtx.strokeStyle = `rgb(${settings.lineColor.r}, ${settings.lineColor.g}, ${settings.lineColor.b})`;
-  svgPaths = [];
-  svgBackgroundColor = settings.backgroundColor;
-  svgStrokeColor = controls.lineColor.value;
-  svgStrokeWidth = settings.lineWidth;
-  svgMaskDataUrl = maskCanvas.toDataURL("image/png");
 
-  for (let y = 0; y <= height; y += settings.lineSpacing) {
+  if (collectSvg) {
+    svgPaths = [];
+    svgBackgroundColor = settings.backgroundColor;
+    svgStrokeColor = controls.lineColor.value;
+    svgStrokeWidth = settings.lineWidth;
+    svgMaskDataUrl = maskCanvas.toDataURL("image/png");
+  }
+
+  for (let y = 0; y <= logicalHeight; y += settings.lineSpacing) {
     const rowIndex = Math.round(y / settings.lineSpacing);
     const pairedRowIndex = Math.floor(rowIndex / 2);
     const alternatingPhase = rowIndex % 2 === 0 ? 0 : Math.PI;
     let phase = seed * 0.017 + pairedRowIndex * 0.73 + alternatingPhase;
     const rowPoints = [];
 
-    for (let x = 0; x <= width; x += sampleStep) {
+    for (let x = 0; x <= logicalWidth; x += sampleStep) {
       const point = getSinePoint(x, y, phase, settings);
       rowPoints.push({ x: point.x, y: point.y });
       phase += point.frequency * sampleStep;
     }
 
     if (rowPoints.length > 1) {
-      strokeCanvasPath(lineCtx, rowPoints);
-      svgPaths.push({
-        d: catmullRomToBezierPath(rowPoints),
-        opacity: 1,
-      });
+      strokeCanvasPath(lineCtx, rowPoints, scale);
+
+      if (collectSvg) {
+        svgPaths.push({
+          d: catmullRomToBezierPath(rowPoints),
+          opacity: 1,
+        });
+      }
     }
   }
 
   lineCtx.globalCompositeOperation = "destination-in";
   lineCtx.drawImage(maskCanvas, 0, 0);
-  outputCtx.drawImage(lineCanvas, 0, 0);
+  targetCtx.drawImage(lineCanvas, 0, 0);
 
   function getSinePoint(x, baseY, currentPhase, currentSettings) {
     const brightness = enhanceBrightness(getBrightness(x, baseY), currentSettings.darkAlpha);
@@ -294,7 +307,7 @@ function renderSineLines() {
   }
 }
 
-function buildMaskCanvas(width, height, settings) {
+function buildMaskCanvas(width, height, settings, scale = 1) {
   const maskCanvas = document.createElement("canvas");
   maskCanvas.width = width;
   maskCanvas.height = height;
@@ -308,7 +321,7 @@ function buildMaskCanvas(width, height, settings) {
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const index = (y * width + x) * 4;
-      const brightness = enhanceBrightness(getBrightness(x, y), settings.darkAlpha);
+      const brightness = enhanceBrightness(getBrightness(x / scale, y / scale), settings.darkAlpha);
       const darkness = clamp(1 - brightness / 255, 0, 1);
       const strongMask = minMask + (1 - minMask) * Math.pow(darkness, power);
       const mask = lerp(1, strongMask, maskStrength);
@@ -325,12 +338,28 @@ function buildMaskCanvas(width, height, settings) {
   return maskCanvas;
 }
 
-function strokeCanvasPath(ctx, points) {
+function strokeCanvasPath(ctx, points, scale = 1) {
   ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
+  ctx.moveTo(points[0].x * scale, points[0].y * scale);
 
-  for (let i = 1; i < points.length; i += 1) {
-    ctx.lineTo(points[i].x, points[i].y);
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+
+    ctx.bezierCurveTo(
+      c1x * scale,
+      c1y * scale,
+      c2x * scale,
+      c2y * scale,
+      p2.x * scale,
+      p2.y * scale
+    );
   }
 
   ctx.stroke();
@@ -363,10 +392,46 @@ function ellipse(x, y, cx, cy, rx, ry) {
 }
 
 function downloadPng() {
+  if (uploadedImage && grayscale) {
+    downloadHighResolutionPng();
+    return;
+  }
+
   const link = document.createElement("a");
   link.download = "sine-line-image.png";
   link.href = outputCanvas.toDataURL("image/png");
   link.click();
+}
+
+function getPngExportScale() {
+  const dpiScale = PNG_EXPORT_DPI / CSS_DPI;
+  const maxDimension = Math.max(outputCanvas.width, outputCanvas.height);
+  const sideScale = MAX_EXPORT_SIDE / maxDimension;
+  return Math.max(1, Math.min(dpiScale, sideScale));
+}
+
+function downloadHighResolutionPng() {
+  const scale = getPngExportScale();
+  const exportCanvas = document.createElement("canvas");
+  const exportCtx = exportCanvas.getContext("2d");
+
+  exportCanvas.width = Math.round(outputCanvas.width * scale);
+  exportCanvas.height = Math.round(outputCanvas.height * scale);
+  renderArtwork(exportCtx, outputCanvas.width, outputCanvas.height, scale, false);
+
+  exportCanvas.toBlob((blob) => {
+    if (!blob) {
+      alert("PNGを書き出せませんでした。");
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = "sine-line-image.png";
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, "image/png");
 }
 
 function formatSvgNumber(value) {
