@@ -53,6 +53,7 @@ let svgPaths = [];
 let svgBackgroundColor = "#ffffff";
 let svgStrokeColor = controls.lineColor.value;
 let svgStrokeWidth = Number(controls.lineWidth.value);
+let svgMaskDataUrl = "";
 let uploadedImage = null;
 let redrawTimer = 0;
 
@@ -142,14 +143,15 @@ function boxBlur(values, width, height, radius) {
 }
 
 function normalizeBrightness(values) {
-  const histogram = new Uint32Array(256);
+  let low = 255;
+  let high = 0;
+
   for (let i = 0; i < values.length; i += 1) {
-    histogram[values[i]] += 1;
+    low = Math.min(low, values[i]);
+    high = Math.max(high, values[i]);
   }
 
-  const low = findPercentile(histogram, values.length * 0.01);
-  const high = findPercentile(histogram, values.length * 0.99);
-  const span = Math.max(24, high - low);
+  const span = Math.max(1, high - low);
   const normalized = new Uint8ClampedArray(values.length);
 
   for (let i = 0; i < values.length; i += 1) {
@@ -180,6 +182,13 @@ function clamp(value, min, max) {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+function enhanceBrightness(brightness, shadowAmount) {
+  const normalized = brightness / 255;
+  const contrast = 1 + shadowAmount * 4;
+  const adjusted = clamp((normalized - 0.5) * contrast + 0.5, 0, 1);
+  return adjusted * 255;
 }
 
 // Tiny deterministic noise, used only for a subtle hand-drawn wobble.
@@ -224,75 +233,107 @@ function renderSineLines() {
   const width = outputCanvas.width;
   const height = outputCanvas.height;
   const sampleStep = 3;
-  const harmonicAmount = 0.32;
-  const lightAlpha = 0.13;
+  const lineCanvas = document.createElement("canvas");
+  const lineCtx = lineCanvas.getContext("2d");
+  const maskCanvas = buildMaskCanvas(width, height, settings);
 
   outputCtx.fillStyle = settings.backgroundColor;
   outputCtx.fillRect(0, 0, width, height);
-  outputCtx.lineWidth = settings.lineWidth;
-  outputCtx.lineCap = "round";
-  outputCtx.lineJoin = "round";
+  lineCanvas.width = width;
+  lineCanvas.height = height;
+  lineCtx.lineWidth = settings.lineWidth;
+  lineCtx.lineCap = "round";
+  lineCtx.lineJoin = "round";
+  lineCtx.strokeStyle = `rgb(${settings.lineColor.r}, ${settings.lineColor.g}, ${settings.lineColor.b})`;
   svgPaths = [];
   svgBackgroundColor = settings.backgroundColor;
   svgStrokeColor = controls.lineColor.value;
   svgStrokeWidth = settings.lineWidth;
+  svgMaskDataUrl = maskCanvas.toDataURL("image/png");
 
   for (let y = 0; y <= height; y += settings.lineSpacing) {
     const rowIndex = Math.round(y / settings.lineSpacing);
-    const rowPhase = seed * 0.017 + rowIndex * 0.73;
-    const rowPhase2 = seed * 0.031 + rowIndex * 1.19;
-    let previousPoint = null;
+    const pairedRowIndex = Math.floor(rowIndex / 2);
+    const alternatingPhase = rowIndex % 2 === 0 ? 0 : Math.PI;
+    let phase = seed * 0.017 + pairedRowIndex * 0.73 + alternatingPhase;
     const rowPoints = [];
-    let rowOpacityTotal = 0;
-    let rowOpacityCount = 0;
 
     for (let x = 0; x <= width; x += sampleStep) {
-      const point = getSinePoint(x, y, rowIndex, rowPhase, rowPhase2, settings, harmonicAmount);
+      const point = getSinePoint(x, y, phase, settings);
       rowPoints.push({ x: point.x, y: point.y });
-
-      if (previousPoint) {
-        const alpha = clamp((previousPoint.alpha + point.alpha) * 0.5, 0, 1);
-        outputCtx.strokeStyle =
-          `rgba(${settings.lineColor.r}, ${settings.lineColor.g}, ${settings.lineColor.b}, ${alpha})`;
-        outputCtx.beginPath();
-        outputCtx.moveTo(previousPoint.x, previousPoint.y);
-        outputCtx.lineTo(point.x, point.y);
-        outputCtx.stroke();
-        rowOpacityTotal += alpha;
-        rowOpacityCount += 1;
-      }
-
-      previousPoint = point;
+      phase += point.frequency * sampleStep;
     }
 
     if (rowPoints.length > 1) {
+      strokeCanvasPath(lineCtx, rowPoints);
       svgPaths.push({
         d: catmullRomToBezierPath(rowPoints),
-        opacity: rowOpacityCount > 0 ? rowOpacityTotal / rowOpacityCount : 1,
+        opacity: 1,
       });
     }
   }
 
-  function getSinePoint(x, baseY, rowIndex, rowPhase, rowPhase2, currentSettings, harmonic) {
-    const brightness = getBrightness(x, baseY);
+  lineCtx.globalCompositeOperation = "destination-in";
+  lineCtx.drawImage(maskCanvas, 0, 0);
+  outputCtx.drawImage(lineCanvas, 0, 0);
+
+  function getSinePoint(x, baseY, currentPhase, currentSettings) {
+    const brightness = enhanceBrightness(getBrightness(x, baseY), currentSettings.darkAlpha);
     const darkness = clamp(1 - brightness / 255, 0, 1);
-    const d = Math.pow(darkness, currentSettings.gamma);
-    const amplitude = lerp(currentSettings.minAmplitude, currentSettings.maxAmplitude, d);
-    const frequency = lerp(currentSettings.minFrequency, currentSettings.maxFrequency, d);
-    const handDrawn =
-      hashNoise(Math.round(x / 7), rowIndex, 4) * currentSettings.handNoise * (0.25 + d * 0.45);
-    const yOffset =
-      Math.sin(x * frequency + rowPhase) * amplitude +
-      Math.sin(x * frequency * 2.3 + rowPhase2) * amplitude * harmonic +
-      handDrawn;
-    const alpha = lerp(lightAlpha, currentSettings.darkAlpha, d);
+    const frequencyTone = Math.pow(darkness, 0.85);
+    const amplitudeTone = Math.pow(darkness, 5);
+    const amplitude = lerp(currentSettings.minAmplitude, currentSettings.maxAmplitude, amplitudeTone);
+    const frequency = lerp(currentSettings.minFrequency, currentSettings.maxFrequency, frequencyTone);
+    const yOffset = Math.sin(currentPhase) * amplitude;
 
     return {
       x,
       y: baseY + yOffset,
-      alpha,
+      frequency,
     };
   }
+}
+
+function buildMaskCanvas(width, height, settings) {
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = width;
+  maskCanvas.height = height;
+
+  const maskCtx = maskCanvas.getContext("2d");
+  const imageData = maskCtx.createImageData(width, height);
+  const minMask = 0.02;
+  const maskStrength = clamp(settings.gamma, 0, 1);
+  const power = lerp(0.65, 3.2, maskStrength);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const brightness = enhanceBrightness(getBrightness(x, y), settings.darkAlpha);
+      const darkness = clamp(1 - brightness / 255, 0, 1);
+      const strongMask = minMask + (1 - minMask) * Math.pow(darkness, power);
+      const mask = lerp(1, strongMask, maskStrength);
+      const alpha = Math.round(mask * 255);
+
+      imageData.data[index] = 255;
+      imageData.data[index + 1] = 255;
+      imageData.data[index + 2] = 255;
+      imageData.data[index + 3] = alpha;
+    }
+  }
+
+  maskCtx.putImageData(imageData, 0, 0);
+  return maskCanvas;
+}
+
+function strokeCanvasPath(ctx, points) {
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+
+  for (let i = 1; i < points.length; i += 1) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+
+  ctx.stroke();
 }
 
 function renderPlaceholder() {
@@ -311,6 +352,7 @@ function renderPlaceholder() {
   svgBackgroundColor = "#ffffff";
   svgStrokeColor = controls.lineColor.value;
   svgStrokeWidth = Number(controls.lineWidth.value);
+  svgMaskDataUrl = "";
   grayscale = null;
 }
 
@@ -362,7 +404,6 @@ function escapeXml(value) {
 function buildSvgString() {
   const width = outputCanvas.width;
   const height = outputCanvas.height;
-  const background = escapeXml(svgBackgroundColor);
   const stroke = escapeXml(svgStrokeColor);
   const strokeWidth = formatSvgNumber(svgStrokeWidth);
   const pathMarkup = svgPaths
@@ -375,7 +416,6 @@ function buildSvgString() {
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-    `  <rect width="100%" height="100%" fill="${background}"/>`,
     pathMarkup,
     `</svg>`,
   ].filter(Boolean).join("\n");
