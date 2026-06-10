@@ -1,5 +1,6 @@
 const outputCanvas = document.getElementById("outputCanvas");
 const sourceCanvas = document.getElementById("sourceCanvas");
+const workspace = document.querySelector(".workspace");
 const outputCtx = outputCanvas.getContext("2d");
 const sourceCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
 
@@ -8,32 +9,50 @@ const controls = {
   lineColor: document.getElementById("lineColor"),
   backgroundColor: document.getElementById("backgroundColor"),
   lineSpacing: document.getElementById("lineSpacing"),
+  lineSpacingNumber: document.getElementById("lineSpacingNumber"),
   lineWidth: document.getElementById("lineWidth"),
+  lineWidthNumber: document.getElementById("lineWidthNumber"),
   minAmplitude: document.getElementById("minAmplitude"),
+  minAmplitudeNumber: document.getElementById("minAmplitudeNumber"),
   maxAmplitude: document.getElementById("maxAmplitude"),
+  maxAmplitudeNumber: document.getElementById("maxAmplitudeNumber"),
   minFrequency: document.getElementById("minFrequency"),
+  minFrequencyNumber: document.getElementById("minFrequencyNumber"),
   maxFrequency: document.getElementById("maxFrequency"),
+  maxFrequencyNumber: document.getElementById("maxFrequencyNumber"),
   darkAlpha: document.getElementById("darkAlpha"),
+  darkAlphaNumber: document.getElementById("darkAlphaNumber"),
   gamma: document.getElementById("gamma"),
-  handNoise: document.getElementById("handNoise"),
-  seedButton: document.getElementById("seedButton"),
+  gammaNumber: document.getElementById("gammaNumber"),
   downloadButton: document.getElementById("downloadButton"),
+  saveSvgButton: document.getElementById("saveSvgButton"),
+  copySvgButton: document.getElementById("copySvgButton"),
 };
 
 const readouts = {
-  spacingValue: document.getElementById("spacingValue"),
-  widthValue: document.getElementById("widthValue"),
-  minAmplitudeValue: document.getElementById("minAmplitudeValue"),
-  maxAmplitudeValue: document.getElementById("maxAmplitudeValue"),
-  minFrequencyValue: document.getElementById("minFrequencyValue"),
-  maxFrequencyValue: document.getElementById("maxFrequencyValue"),
-  darkAlphaValue: document.getElementById("darkAlphaValue"),
-  gammaValue: document.getElementById("gammaValue"),
-  handNoiseValue: document.getElementById("handNoiseValue"),
+  spacingValue: controls.lineSpacingNumber,
+  widthValue: controls.lineWidthNumber,
+  minAmplitudeValue: controls.minAmplitudeNumber,
+  maxAmplitudeValue: controls.maxAmplitudeNumber,
+  minFrequencyValue: controls.minFrequencyNumber,
+  maxFrequencyValue: controls.maxFrequencyNumber,
+  darkAlphaValue: controls.darkAlphaNumber,
+  gammaValue: controls.gammaNumber,
 };
+
+const rangeTracks = {
+  amplitude: document.getElementById("amplitudeRange"),
+  frequency: document.getElementById("frequencyRange"),
+};
+
+const HAND_NOISE_AMOUNT = 0.45;
 
 let seed = Math.floor(Math.random() * 100000);
 let grayscale = null;
+let svgPaths = [];
+let svgBackgroundColor = "#ffffff";
+let svgStrokeColor = controls.lineColor.value;
+let svgStrokeWidth = Number(controls.lineWidth.value);
 let uploadedImage = null;
 let redrawTimer = 0;
 
@@ -59,7 +78,6 @@ function updateReadouts() {
   readouts.maxFrequencyValue.value = Number(controls.maxFrequency.value).toFixed(3);
   readouts.darkAlphaValue.value = Number(controls.darkAlpha.value).toFixed(2);
   readouts.gammaValue.value = Number(controls.gamma.value).toFixed(2);
-  readouts.handNoiseValue.value = Number(controls.handNoise.value).toFixed(2);
 }
 
 function fitImageToCanvas(image) {
@@ -196,11 +214,12 @@ function getSettings() {
     maxFrequency,
     darkAlpha: Number(controls.darkAlpha.value),
     gamma: Number(controls.gamma.value),
-    handNoise: Number(controls.handNoise.value),
+    handNoise: HAND_NOISE_AMOUNT,
   };
 }
 
 function renderSineLines() {
+  workspace.classList.add("has-image");
   const settings = getSettings();
   const width = outputCanvas.width;
   const height = outputCanvas.height;
@@ -213,15 +232,23 @@ function renderSineLines() {
   outputCtx.lineWidth = settings.lineWidth;
   outputCtx.lineCap = "round";
   outputCtx.lineJoin = "round";
+  svgPaths = [];
+  svgBackgroundColor = settings.backgroundColor;
+  svgStrokeColor = controls.lineColor.value;
+  svgStrokeWidth = settings.lineWidth;
 
   for (let y = 0; y <= height; y += settings.lineSpacing) {
     const rowIndex = Math.round(y / settings.lineSpacing);
     const rowPhase = seed * 0.017 + rowIndex * 0.73;
     const rowPhase2 = seed * 0.031 + rowIndex * 1.19;
     let previousPoint = null;
+    const rowPoints = [];
+    let rowOpacityTotal = 0;
+    let rowOpacityCount = 0;
 
     for (let x = 0; x <= width; x += sampleStep) {
       const point = getSinePoint(x, y, rowIndex, rowPhase, rowPhase2, settings, harmonicAmount);
+      rowPoints.push({ x: point.x, y: point.y });
 
       if (previousPoint) {
         const alpha = clamp((previousPoint.alpha + point.alpha) * 0.5, 0, 1);
@@ -231,9 +258,18 @@ function renderSineLines() {
         outputCtx.moveTo(previousPoint.x, previousPoint.y);
         outputCtx.lineTo(point.x, point.y);
         outputCtx.stroke();
+        rowOpacityTotal += alpha;
+        rowOpacityCount += 1;
       }
 
       previousPoint = point;
+    }
+
+    if (rowPoints.length > 1) {
+      svgPaths.push({
+        d: catmullRomToBezierPath(rowPoints),
+        opacity: rowOpacityCount > 0 ? rowOpacityTotal / rowOpacityCount : 1,
+      });
     }
   }
 
@@ -260,6 +296,7 @@ function renderSineLines() {
 }
 
 function renderPlaceholder() {
+  workspace.classList.remove("has-image");
   const width = 900;
   const height = 640;
 
@@ -270,6 +307,10 @@ function renderPlaceholder() {
 
   outputCtx.fillStyle = "#ffffff";
   outputCtx.fillRect(0, 0, width, height);
+  svgPaths = [];
+  svgBackgroundColor = "#ffffff";
+  svgStrokeColor = controls.lineColor.value;
+  svgStrokeWidth = Number(controls.lineWidth.value);
   grayscale = null;
 }
 
@@ -286,9 +327,111 @@ function downloadPng() {
   link.click();
 }
 
-controls.imageInput.addEventListener("change", () => {
-  const file = controls.imageInput.files && controls.imageInput.files[0];
-  if (!file) return;
+function formatSvgNumber(value) {
+  return Number(value).toFixed(2).replace(/\.?0+$/, "");
+}
+
+function catmullRomToBezierPath(points) {
+  const first = points[0];
+  let d = `M ${formatSvgNumber(first.x)} ${formatSvgNumber(first.y)}`;
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${formatSvgNumber(c1x)} ${formatSvgNumber(c1y)} ${formatSvgNumber(c2x)} ${formatSvgNumber(c2y)} ${formatSvgNumber(p2.x)} ${formatSvgNumber(p2.y)}`;
+  }
+
+  return d;
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function buildSvgString() {
+  const width = outputCanvas.width;
+  const height = outputCanvas.height;
+  const background = escapeXml(svgBackgroundColor);
+  const stroke = escapeXml(svgStrokeColor);
+  const strokeWidth = formatSvgNumber(svgStrokeWidth);
+  const pathMarkup = svgPaths
+    .map((path) => {
+      const opacity = formatSvgNumber(clamp(path.opacity, 0, 1));
+      return `  <path d="${path.d}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}"/>`;
+    })
+    .join("\n");
+
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    `  <rect width="100%" height="100%" fill="${background}"/>`,
+    pathMarkup,
+    `</svg>`,
+  ].filter(Boolean).join("\n");
+}
+
+function saveSvg() {
+  const blob = new Blob([buildSvgString()], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.download = "sine-line-converter.svg";
+  link.href = url;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function copySvg() {
+  const svg = buildSvgString();
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(svg);
+    } else if (!copyTextFallback(svg)) {
+      throw new Error("Clipboard copy is not available.");
+    }
+
+    const originalText = controls.copySvgButton.textContent;
+    controls.copySvgButton.textContent = "コピーしました";
+    window.setTimeout(() => {
+      controls.copySvgButton.textContent = originalText;
+    }, 1400);
+  } catch (error) {
+    alert("SVGをクリップボードへコピーできませんでした。ブラウザの権限設定を確認してください。");
+  }
+}
+
+function copyTextFallback(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
+
+  return copied;
+}
+
+function loadImageFile(file) {
+  if (!file || !file.type.startsWith("image/")) return;
 
   const image = new Image();
   image.onload = () => {
@@ -298,28 +441,184 @@ controls.imageInput.addEventListener("change", () => {
     renderSineLines();
   };
   image.src = URL.createObjectURL(file);
+}
+
+controls.imageInput.addEventListener("change", () => {
+  const file = controls.imageInput.files && controls.imageInput.files[0];
+  loadImageFile(file);
+});
+
+workspace.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  if (!uploadedImage) {
+    workspace.classList.add("is-dragover");
+  }
+});
+
+workspace.addEventListener("dragleave", (event) => {
+  if (!workspace.contains(event.relatedTarget)) {
+    workspace.classList.remove("is-dragover");
+  }
+});
+
+workspace.addEventListener("drop", (event) => {
+  event.preventDefault();
+  workspace.classList.remove("is-dragover");
+  const file = event.dataTransfer.files && event.dataTransfer.files[0];
+  loadImageFile(file);
 });
 
 [
   controls.lineColor,
   controls.backgroundColor,
-  controls.lineSpacing,
-  controls.lineWidth,
-  controls.minAmplitude,
-  controls.maxAmplitude,
-  controls.minFrequency,
-  controls.maxFrequency,
-  controls.darkAlpha,
-  controls.gamma,
-  controls.handNoise,
 ].forEach((control) => control.addEventListener("input", scheduleRender));
 
-controls.seedButton.addEventListener("click", () => {
-  seed = Math.floor(Math.random() * 100000);
-  scheduleRender();
+const syncedControls = [
+  [controls.lineSpacing, controls.lineSpacingNumber],
+  [controls.lineWidth, controls.lineWidthNumber],
+  [controls.darkAlpha, controls.darkAlphaNumber],
+  [controls.gamma, controls.gammaNumber],
+];
+
+const rangeControls = [
+  {
+    minRange: controls.minAmplitude,
+    maxRange: controls.maxAmplitude,
+    minNumber: controls.minAmplitudeNumber,
+    maxNumber: controls.maxAmplitudeNumber,
+    track: rangeTracks.amplitude,
+  },
+  {
+    minRange: controls.minFrequency,
+    maxRange: controls.maxFrequency,
+    minNumber: controls.minFrequencyNumber,
+    maxNumber: controls.maxFrequencyNumber,
+    track: rangeTracks.frequency,
+  },
+];
+
+function syncControl(source, target) {
+  const min = Number(target.min);
+  const max = Number(target.max);
+  const rawValue = Number(source.value);
+  const value = Number.isFinite(rawValue) ? clamp(rawValue, min, max) : min;
+  source.value = value;
+  target.value = value;
+  updateSingleRangeTrack(source);
+}
+
+function updateSingleRangeTrack(range) {
+  const min = Number(range.min);
+  const max = Number(range.max);
+  const span = max - min;
+  const rawPercent = span > 0 ? ((Number(range.value) - min) / span) * 100 : 0;
+  const percent = clamp(rawPercent, 0, 100);
+  range.style.setProperty("--range-progress", `${percent}%`);
+}
+
+function syncRangeControl(pair, changedRole) {
+  const minLimit = Number(pair.minRange.min);
+  const maxLimit = Number(pair.maxRange.max);
+  let minValue = clamp(Number(pair.minRange.value), minLimit, maxLimit);
+  let maxValue = clamp(Number(pair.maxRange.value), minLimit, maxLimit);
+
+  if (changedRole === "min") {
+    minValue = clamp(Number(pair.minRange.value), minLimit, maxLimit);
+    if (minValue > maxValue) maxValue = minValue;
+  } else if (changedRole === "max") {
+    maxValue = clamp(Number(pair.maxRange.value), minLimit, maxLimit);
+    if (maxValue < minValue) minValue = maxValue;
+  } else if (minValue > maxValue) {
+    maxValue = minValue;
+  }
+
+  pair.minRange.value = minValue;
+  pair.maxRange.value = maxValue;
+  pair.minNumber.value = minValue;
+  pair.maxNumber.value = maxValue;
+  updateRangeTrack(pair);
+}
+
+function syncRangeNumber(pair, changedRole) {
+  const minLimit = Number(pair.minNumber.min);
+  const maxLimit = Number(pair.maxNumber.max);
+  let minValue = Number(pair.minNumber.value);
+  let maxValue = Number(pair.maxNumber.value);
+
+  minValue = Number.isFinite(minValue) ? clamp(minValue, minLimit, maxLimit) : minLimit;
+  maxValue = Number.isFinite(maxValue) ? clamp(maxValue, minLimit, maxLimit) : maxLimit;
+
+  if (changedRole === "min" && minValue > maxValue) {
+    maxValue = minValue;
+  }
+  if (changedRole === "max" && maxValue < minValue) {
+    minValue = maxValue;
+  }
+
+  pair.minRange.value = minValue;
+  pair.maxRange.value = maxValue;
+  pair.minNumber.value = minValue;
+  pair.maxNumber.value = maxValue;
+  updateRangeTrack(pair);
+}
+
+function updateRangeTrack(pair) {
+  const minLimit = Number(pair.minRange.min);
+  const maxLimit = Number(pair.maxRange.max);
+  const span = maxLimit - minLimit;
+  const minPercent = ((Number(pair.minRange.value) - minLimit) / span) * 100;
+  const maxPercent = ((Number(pair.maxRange.value) - minLimit) / span) * 100;
+
+  pair.track.style.setProperty("--range-start", `${minPercent}%`);
+  pair.track.style.setProperty("--range-end", `${maxPercent}%`);
+}
+
+syncedControls.forEach(([range, number]) => {
+  range.addEventListener("input", () => {
+    syncControl(range, number);
+    scheduleRender();
+  });
+
+  number.addEventListener("input", () => {
+    syncControl(number, range);
+    scheduleRender();
+  });
+});
+
+[
+  controls.lineSpacing,
+  controls.lineWidth,
+  controls.darkAlpha,
+  controls.gamma,
+].forEach(updateSingleRangeTrack);
+
+rangeControls.forEach((pair) => {
+  pair.minRange.addEventListener("input", () => {
+    syncRangeControl(pair, "min");
+    scheduleRender();
+  });
+
+  pair.maxRange.addEventListener("input", () => {
+    syncRangeControl(pair, "max");
+    scheduleRender();
+  });
+
+  pair.minNumber.addEventListener("input", () => {
+    syncRangeNumber(pair, "min");
+    scheduleRender();
+  });
+
+  pair.maxNumber.addEventListener("input", () => {
+    syncRangeNumber(pair, "max");
+    scheduleRender();
+  });
 });
 
 controls.downloadButton.addEventListener("click", downloadPng);
+controls.saveSvgButton.addEventListener("click", saveSvg);
+controls.copySvgButton.addEventListener("click", copySvg);
 
+syncedControls.forEach(([range, number]) => syncControl(range, number));
+rangeControls.forEach((pair) => syncRangeControl(pair));
 updateReadouts();
 renderPlaceholder();
