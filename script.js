@@ -27,6 +27,7 @@ const controls = {
   downloadButton: document.getElementById("downloadButton"),
   saveSvgButton: document.getElementById("saveSvgButton"),
   copySvgButton: document.getElementById("copySvgButton"),
+  replaceImageButton: document.getElementById("replaceImageButton"),
 };
 
 const readouts = {
@@ -232,6 +233,7 @@ function getSettings() {
 
 function renderSineLines() {
   workspace.classList.add("has-image");
+  controls.replaceImageButton.hidden = false;
   renderArtwork(outputCtx, outputCanvas.width, outputCanvas.height, 1, true);
 }
 
@@ -367,6 +369,7 @@ function strokeCanvasPath(ctx, points, scale = 1) {
 
 function renderPlaceholder() {
   workspace.classList.remove("has-image");
+  controls.replaceImageButton.hidden = true;
   const width = 900;
   const height = 640;
 
@@ -722,6 +725,9 @@ rangeControls.forEach((pair) => {
 controls.downloadButton.addEventListener("click", downloadPng);
 controls.saveSvgButton.addEventListener("click", saveSvg);
 controls.copySvgButton.addEventListener("click", copySvg);
+controls.replaceImageButton.addEventListener("click", () => {
+  controls.imageInput.click();
+});
 
 syncedControls.forEach(([range, number]) => syncControl(range, number));
 rangeControls.forEach((pair) => syncRangeControl(pair));

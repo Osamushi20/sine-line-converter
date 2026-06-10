@@ -395,6 +395,16 @@ button:hover {
   background: var(--focus);
 }
 
+.button-secondary {
+  border: 1px solid var(--ink);
+  background: #fff;
+  color: var(--ink);
+}
+
+.button-secondary:hover {
+  background: #f7f7f5;
+}
+
 button:active {
   transform: translateY(1px);
 }
