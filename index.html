@@ -36,7 +36,7 @@
         <label class="field">
           <span class="field-head">
             <span class="field-name">線の間隔</span>
-            <span class="value-group"><input id="lineSpacingNumber" class="number-input" type="number" min="2" max="20" step="1" value="9"> px</span>
+            <span class="value-group"><input id="lineSpacingNumber" class="number-input" type="number" inputmode="decimal" min="2" max="20" step="1" value="9"> px</span>
           </span>
           <div class="control-row">
             <input id="lineSpacing" type="range" min="2" max="20" step="1" value="3">
@@ -46,7 +46,7 @@
         <label class="field">
           <span class="field-head">
             <span class="field-name">線の太さ</span>
-            <span class="value-group"><input id="lineWidthNumber" class="number-input" type="number" min="0.2" max="8" step="0.1" value="0.5"> px</span>
+            <span class="value-group"><input id="lineWidthNumber" class="number-input" type="number" inputmode="decimal" min="0.2" max="8" step="0.1" value="0.5"> px</span>
           </span>
           <div class="control-row">
             <input id="lineWidth" type="range" min="0.2" max="8" step="0.1" value="0.5">
@@ -57,9 +57,9 @@
           <span class="field-head">
             <span class="field-name">波の大きさ</span>
             <span class="value-group">
-              <input id="minAmplitudeNumber" class="number-input" type="number" min="0" max="42" step="0.1" value="0"> px
+              <input id="minAmplitudeNumber" class="number-input" type="number" inputmode="decimal" min="0" max="42" step="0.1" value="0"> px
               <span class="range-separator">-</span>
-              <input id="maxAmplitudeNumber" class="number-input" type="number" min="0" max="42" step="0.5" value="13"> px
+              <input id="maxAmplitudeNumber" class="number-input" type="number" inputmode="decimal" min="0" max="42" step="0.5" value="13"> px
             </span>
           </span>
           <div class="dual-range" id="amplitudeRange">
@@ -72,9 +72,9 @@
           <span class="field-head">
             <span class="field-name">波の細かさ</span>
             <span class="value-group">
-              <input id="minFrequencyNumber" class="number-input" type="number" min="0.001" max="1" step="0.001" value="0.001">
+              <input id="minFrequencyNumber" class="number-input" type="number" inputmode="decimal" min="0.001" max="1" step="0.001" value="0.001">
               <span class="range-separator">-</span>
-              <input id="maxFrequencyNumber" class="number-input" type="number" min="0.001" max="1" step="0.001" value="0.400">
+              <input id="maxFrequencyNumber" class="number-input" type="number" inputmode="decimal" min="0.001" max="1" step="0.001" value="0.400">
             </span>
           </span>
           <div class="dual-range" id="frequencyRange">
@@ -86,7 +86,7 @@
         <label class="field">
           <span class="field-head">
             <span class="field-name">影の強調</span>
-            <span class="value-group"><input id="darkAlphaNumber" class="number-input" type="number" min="0" max="1" step="0.01" value="0.15"></span>
+            <span class="value-group"><input id="darkAlphaNumber" class="number-input" type="number" inputmode="decimal" min="0" max="1" step="0.01" value="0.15"></span>
           </span>
           <div class="control-row">
             <input id="darkAlpha" type="range" min="0" max="1" step="0.01" value="0.15">
@@ -96,7 +96,7 @@
         <label class="field">
           <span class="field-head">
             <span class="field-name">コントラスト</span>
-            <span class="value-group"><input id="gammaNumber" class="number-input" type="number" min="0" max="1" step="0.01" value="0.6"></span>
+            <span class="value-group"><input id="gammaNumber" class="number-input" type="number" inputmode="decimal" min="0" max="1" step="0.01" value="0.6"></span>
           </span>
           <div class="control-row">
             <input id="gamma" type="range" min="0" max="1" step="0.01" value="0.6">

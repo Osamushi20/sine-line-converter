@@ -50,6 +50,7 @@ const HAND_NOISE_AMOUNT = 0.45;
 const PNG_EXPORT_DPI = 600;
 const CSS_DPI = 96;
 const MAX_EXPORT_SIDE = 6000;
+const MOBILE_PREVIEW_SCALE = 0.5;
 
 let seed = Math.floor(Math.random() * 100000);
 let grayscale = null;
@@ -60,10 +61,29 @@ let svgStrokeWidth = Number(controls.lineWidth.value);
 let svgMaskDataUrl = "";
 let uploadedImage = null;
 let redrawTimer = 0;
+let renderDelayTimer = 0;
+let renderQueued = false;
+let isInteracting = false;
 
 // Slider changes can arrive quickly, so draw once on the next animation frame.
-function scheduleRender() {
+function scheduleRender({ final = false } = {}) {
   updateReadouts();
+  clearTimeout(renderDelayTimer);
+
+  if (isInteracting && !final) {
+    if (renderQueued) return;
+    renderQueued = true;
+    renderDelayTimer = window.setTimeout(() => {
+      renderQueued = false;
+      requestRenderFrame();
+    }, 90);
+    return;
+  }
+
+  renderDelayTimer = window.setTimeout(requestRenderFrame, final ? 0 : 24);
+}
+
+function requestRenderFrame() {
   cancelAnimationFrame(redrawTimer);
   redrawTimer = requestAnimationFrame(() => {
     if (uploadedImage && grayscale) {
@@ -234,14 +254,44 @@ function getSettings() {
 function renderSineLines() {
   workspace.classList.add("has-image");
   controls.replaceImageButton.hidden = false;
-  renderArtwork(outputCtx, outputCanvas.width, outputCanvas.height, 1, true);
+
+  if (isInteracting && isMobileViewport()) {
+    renderMobilePreview();
+    return;
+  }
+
+  renderArtwork(outputCtx, outputCanvas.width, outputCanvas.height, 1, true, isInteracting);
 }
 
-function renderArtwork(targetCtx, logicalWidth, logicalHeight, scale, collectSvg) {
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 768px)").matches;
+}
+
+function renderMobilePreview() {
+  const previewCanvas = document.createElement("canvas");
+  const previewCtx = previewCanvas.getContext("2d");
+
+  previewCanvas.width = Math.max(1, Math.round(outputCanvas.width * MOBILE_PREVIEW_SCALE));
+  previewCanvas.height = Math.max(1, Math.round(outputCanvas.height * MOBILE_PREVIEW_SCALE));
+  renderArtwork(
+    previewCtx,
+    outputCanvas.width,
+    outputCanvas.height,
+    MOBILE_PREVIEW_SCALE,
+    false,
+    true
+  );
+
+  outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+  outputCtx.imageSmoothingEnabled = true;
+  outputCtx.drawImage(previewCanvas, 0, 0, outputCanvas.width, outputCanvas.height);
+}
+
+function renderArtwork(targetCtx, logicalWidth, logicalHeight, scale, collectSvg, preview = false) {
   const settings = getSettings();
   const width = Math.round(logicalWidth * scale);
   const height = Math.round(logicalHeight * scale);
-  const sampleStep = 3;
+  const sampleStep = preview ? 6 : 3;
   const lineCanvas = document.createElement("canvas");
   const lineCtx = lineCanvas.getContext("2d");
   const maskCanvas = buildMaskCanvas(width, height, settings, scale);
@@ -681,15 +731,72 @@ function updateRangeTrack(pair) {
   pair.track.style.setProperty("--range-end", `${maxPercent}%`);
 }
 
+function selectNumberInput(event) {
+  event.currentTarget.select();
+}
+
+function commitNumberInput(range, number) {
+  if (number.value.trim() === "") {
+    number.value = range.value;
+    return;
+  }
+
+  syncControl(number, range);
+  scheduleRender({ final: true });
+}
+
+function commitRangeNumber(pair, changedRole) {
+  const number = changedRole === "min" ? pair.minNumber : pair.maxNumber;
+  const range = changedRole === "min" ? pair.minRange : pair.maxRange;
+
+  if (number.value.trim() === "") {
+    number.value = range.value;
+    return;
+  }
+
+  syncRangeNumber(pair, changedRole);
+  scheduleRender({ final: true });
+}
+
+function handleNumberKeydown(event, commit) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    commit();
+    event.currentTarget.blur();
+  }
+}
+
+function beginInteraction() {
+  isInteracting = true;
+}
+
+function endInteraction() {
+  if (!isInteracting) return;
+  isInteracting = false;
+  scheduleRender({ final: true });
+}
+
+window.addEventListener("pointerup", endInteraction);
+window.addEventListener("pointercancel", endInteraction);
+
 syncedControls.forEach(([range, number]) => {
+  number.inputMode = "decimal";
+
   range.addEventListener("input", () => {
     syncControl(range, number);
     scheduleRender();
   });
 
-  number.addEventListener("input", () => {
-    syncControl(number, range);
-    scheduleRender();
+  range.addEventListener("pointerdown", beginInteraction);
+  range.addEventListener("pointerup", endInteraction);
+  range.addEventListener("pointercancel", endInteraction);
+  range.addEventListener("touchend", endInteraction);
+  range.addEventListener("change", endInteraction);
+
+  number.addEventListener("focus", selectNumberInput);
+  number.addEventListener("blur", () => commitNumberInput(range, number));
+  number.addEventListener("keydown", (event) => {
+    handleNumberKeydown(event, () => commitNumberInput(range, number));
   });
 });
 
@@ -701,6 +808,9 @@ syncedControls.forEach(([range, number]) => {
 ].forEach(updateSingleRangeTrack);
 
 rangeControls.forEach((pair) => {
+  pair.minNumber.inputMode = "decimal";
+  pair.maxNumber.inputMode = "decimal";
+
   pair.minRange.addEventListener("input", () => {
     syncRangeControl(pair, "min");
     scheduleRender();
@@ -711,14 +821,23 @@ rangeControls.forEach((pair) => {
     scheduleRender();
   });
 
-  pair.minNumber.addEventListener("input", () => {
-    syncRangeNumber(pair, "min");
-    scheduleRender();
+  [pair.minRange, pair.maxRange].forEach((range) => {
+    range.addEventListener("pointerdown", beginInteraction);
+    range.addEventListener("pointerup", endInteraction);
+    range.addEventListener("pointercancel", endInteraction);
+    range.addEventListener("touchend", endInteraction);
+    range.addEventListener("change", endInteraction);
   });
 
-  pair.maxNumber.addEventListener("input", () => {
-    syncRangeNumber(pair, "max");
-    scheduleRender();
+  pair.minNumber.addEventListener("focus", selectNumberInput);
+  pair.maxNumber.addEventListener("focus", selectNumberInput);
+  pair.minNumber.addEventListener("blur", () => commitRangeNumber(pair, "min"));
+  pair.maxNumber.addEventListener("blur", () => commitRangeNumber(pair, "max"));
+  pair.minNumber.addEventListener("keydown", (event) => {
+    handleNumberKeydown(event, () => commitRangeNumber(pair, "min"));
+  });
+  pair.maxNumber.addEventListener("keydown", (event) => {
+    handleNumberKeydown(event, () => commitRangeNumber(pair, "max"));
   });
 });
 

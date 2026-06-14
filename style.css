@@ -438,28 +438,44 @@ input:focus-visible {
   .control-panel {
     width: 100%;
     max-height: none;
-    padding: 16px;
+    gap: 12px;
+    padding: 14px;
   }
 
   .color-grid {
     grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .field {
+    gap: 5px;
+  }
+
+  .field-head {
+    gap: 8px;
   }
 
   input[type="range"] {
-    min-height: 36px;
+    min-height: 30px;
+    touch-action: pan-y;
   }
 
   .number-input {
-    min-height: 28px;
+    min-height: 26px;
   }
 
   .dual-range {
-    height: 36px;
+    height: 30px;
   }
 
   .dual-range input[type="range"] {
-    height: 36px;
+    height: 30px;
     min-height: 0;
+  }
+
+  .button-row {
+    gap: 8px;
+    margin-top: 2px;
   }
 
   button {
@@ -477,16 +493,22 @@ input:focus-visible {
   }
 
   .control-panel {
-    padding: 14px;
+    gap: 10px;
+    padding: 12px;
   }
 
   .color-grid {
     grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .field {
+    gap: 4px;
   }
 
   .field-head {
     align-items: flex-start;
-    gap: 8px;
+    gap: 6px;
   }
 
   .value-group {
